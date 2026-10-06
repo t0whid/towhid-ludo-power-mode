@@ -1,8 +1,7 @@
 package com.towhid.ludo.ui.game
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,6 +34,7 @@ import com.towhid.ludo.game.ai.ComputerAi
 import com.towhid.ludo.game.engine.GameEngine
 import com.towhid.ludo.game.model.GameMode
 import com.towhid.ludo.game.model.GameState
+import com.towhid.ludo.game.model.PlayerColor
 import com.towhid.ludo.game.model.PowerInventory
 import com.towhid.ludo.game.model.PowerType
 import com.towhid.ludo.game.model.Side
@@ -135,22 +136,25 @@ fun GameScreen(
         PowerInventoryCard(state)
         Spacer(Modifier.height(12.dp))
 
-        LudoBoard(
-            state = state,
-            selectableTokenIds = selectableIds,
-            onTokenTap = { tokenId ->
-                if (state.activeSide != Side.HUMAN) return@LudoBoard
-                if (protectMode) {
-                    if (tokenId in protectableIds && humanPowers.protect > 0) {
-                        state = GameEngine.protectToken(state, tokenId)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            LudoBoard(
+                state = state,
+                selectableTokenIds = selectableIds,
+                onTokenTap = { tokenId ->
+                    if (state.activeSide != Side.HUMAN) return@LudoBoard
+                    if (protectMode) {
+                        if (tokenId in protectableIds && humanPowers.protect > 0) {
+                            state = GameEngine.protectToken(state, tokenId)
+                        }
+                        protectMode = false
+                    } else {
+                        val move = legalMoves.firstOrNull { it.tokenId == tokenId }
+                        if (move != null) state = GameEngine.playMove(state, move)
                     }
-                    protectMode = false
-                } else {
-                    val move = legalMoves.firstOrNull { it.tokenId == tokenId }
-                    if (move != null) state = GameEngine.playMove(state, move)
-                }
-            }
-        )
+                },
+                modifier = Modifier.padding(4.dp)
+            )
+        }
 
         Spacer(Modifier.height(14.dp))
 
@@ -258,12 +262,20 @@ private fun HumanPowerControls(
                     modifier = Modifier.weight(1f),
                     enabled = powers.chooseRoll > 0,
                     onClick = onChooseRollToggle
-                ) { Text("Choose ×${powers.chooseRoll}") }
+                ) {
+                    PowerIcon(PowerType.CHOOSE_ROLL, size = 18.dp)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Choose ×${powers.chooseRoll}")
+                }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
                     enabled = powers.extraRoll > 0 && state.bonusRollsPending == 0,
                     onClick = onUseExtraRoll
-                ) { Text("+1 Roll ×${powers.extraRoll}") }
+                ) {
+                    PowerIcon(PowerType.EXTRA_ROLL, size = 18.dp)
+                    Spacer(Modifier.size(6.dp))
+                    Text("+1 Roll ×${powers.extraRoll}")
+                }
             }
         } else {
             OutlinedButton(
@@ -271,6 +283,8 @@ private fun HumanPowerControls(
                 enabled = powers.double > 0 && !state.doubleActive,
                 onClick = onUseDouble
             ) {
+                PowerIcon(PowerType.DOUBLE, size = 18.dp)
+                Spacer(Modifier.size(6.dp))
                 Text(if (state.doubleActive) "Double active" else "Double ×${powers.double}")
             }
         }
@@ -280,6 +294,8 @@ private fun HumanPowerControls(
             enabled = canProtect,
             onClick = { onProtectModeChange(!protectMode) }
         ) {
+            PowerIcon(PowerType.PROTECT, size = 18.dp)
+            Spacer(Modifier.size(6.dp))
             Text(if (protectMode) "Cancel Protect" else "Protect Guti ×${powers.protect}")
         }
 
@@ -364,33 +380,45 @@ private fun StatusCard(state: GameState) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(62.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = when {
-                        state.lastRoll == null -> "–"
-                        state.dice != null && state.doubleActive -> "${state.dice}→${state.movementSteps}"
-                        else -> state.lastRoll.toString()
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black
-                )
-            }
+            DiceFace(value = state.lastRoll, size = 58.dp)
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (state.activeSide == Side.HUMAN) {
-                        "HUMAN • ${GameEngine.displayName(state.activeColor)}"
-                    } else {
-                        "COMPUTER • ${GameEngine.displayName(state.activeColor)}"
-                    },
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    PlayerColorDot(state.activeColor)
+                    Text(
+                        text = if (state.activeSide == Side.HUMAN) {
+                            "YOU • ${GameEngine.displayName(state.activeColor)}"
+                        } else {
+                            "COMPUTER • ${GameEngine.displayName(state.activeColor)}"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(text = state.message, style = MaterialTheme.typography.bodyMedium)
+                if (state.dice != null && state.doubleActive) {
+                    Text(
+                        text = "Double active: ${state.dice} → ${state.movementSteps}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerColorDot(color: PlayerColor) {
+    val fill = when (color) {
+        PlayerColor.RED -> Color(0xFFE53935)
+        PlayerColor.GREEN -> Color(0xFF2E9D57)
+        PlayerColor.YELLOW -> Color(0xFFF4B522)
+        PlayerColor.BLUE -> Color(0xFF2474D8)
+    }
+    Canvas(modifier = Modifier.size(12.dp)) {
+        drawCircle(fill)
     }
 }

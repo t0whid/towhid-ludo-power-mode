@@ -6,6 +6,7 @@ import com.towhid.ludo.game.model.GameMode
 import com.towhid.ludo.game.model.GameState
 import com.towhid.ludo.game.model.PlayerColor
 import com.towhid.ludo.game.model.PowerInventory
+import com.towhid.ludo.game.model.PowerType
 import com.towhid.ludo.game.model.Side
 import com.towhid.ludo.game.model.Token
 import org.junit.Assert.assertEquals
@@ -141,6 +142,18 @@ class GameEngineTest {
         assertEquals(PlayerColor.RED, state.activeColor)
         assertEquals(0, state.bonusRollsPending)
         assertEquals(0, state.humanPowers.extraRoll)
+    }
+
+    @Test
+    fun powerCellsAreBalancedAndNeverOverlapSafeCells() {
+        assertEquals(8, GameEngine.powerCells.size)
+        assertTrue(GameEngine.powerCells.keys.none { it in GameEngine.safeRingIndexes })
+
+        PowerType.entries.forEach { type ->
+            val indexes = GameEngine.powerCells.filterValues { it == type }.keys.sorted()
+            assertEquals(2, indexes.size)
+            assertEquals(26, indexes[1] - indexes[0])
+        }
     }
 
     @Test
