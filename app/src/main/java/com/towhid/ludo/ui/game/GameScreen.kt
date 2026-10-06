@@ -1,5 +1,6 @@
 package com.towhid.ludo.ui.game
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -36,6 +37,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,13 +67,17 @@ fun GameScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var state by remember(mode) { mutableStateOf(GameState.newGame(mode)) }
+    var state by rememberSaveable(mode, stateSaver = GameStateSaver) {
+        mutableStateOf(GameState.newGame(mode))
+    }
     var protectMode by remember { mutableStateOf(false) }
     var showChooseRoll by remember { mutableStateOf(false) }
     var isRolling by remember { mutableStateOf(false) }
     var animationLock by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var sessionId by remember { mutableIntStateOf(0) }
+    var showExitConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val interactionLocked = isRolling || animationLock
 
@@ -107,31 +113,35 @@ fun GameScreen(
         if (
             state.winner != null ||
             state.activeSide != Side.COMPUTER ||
-            state.dice != null ||
             animationLock ||
             isRolling
         ) return@LaunchedEffect
 
         delay(350)
-        val preRoll = withContext(Dispatchers.Default) { ComputerAi.choosePreRollDecision(state) }
         var working = state
-        if (preRoll.useExtraRoll) {
-            working = GameEngine.useExtraRoll(working)
-            state = working
-            delay(260)
-        }
 
-        working = if (preRoll.chosenRoll != null) {
-            GameEngine.useChooseRoll(working, preRoll.chosenRoll)
-        } else {
-            isRolling = true
-            delay(320)
-            val rolled = GameEngine.beginRoll(working, Random.nextInt(1, 7))
-            isRolling = false
-            rolled
+        // A saved/recreated game can resume after the computer already rolled. In that case
+        // skip the pre-roll phase and continue directly with the best after-roll decision.
+        if (working.dice == null) {
+            val preRoll = withContext(Dispatchers.Default) { ComputerAi.choosePreRollDecision(working) }
+            if (preRoll.useExtraRoll) {
+                working = GameEngine.useExtraRoll(working)
+                state = working
+                delay(260)
+            }
+
+            working = if (preRoll.chosenRoll != null) {
+                GameEngine.useChooseRoll(working, preRoll.chosenRoll)
+            } else {
+                isRolling = true
+                delay(320)
+                val rolled = GameEngine.beginRoll(working, Random.nextInt(1, 7))
+                isRolling = false
+                rolled
+            }
+            state = working
+            delay(430)
         }
-        state = working
-        delay(430)
 
         val decision = withContext(Dispatchers.Default) { ComputerAi.chooseAfterRollDecision(working) }
         decision.protectTokenId?.let { tokenId ->
@@ -165,6 +175,36 @@ fun GameScreen(
     }
     val humanPowers = state.powers(Side.HUMAN)
 
+    BackHandler(enabled = state.winner == null) {
+        showExitConfirmation = true
+    }
+
+    if (showExitConfirmation) {
+        ConfirmActionDialog(
+            title = "Leave this match?",
+            message = "Your current match will be closed.",
+            confirmLabel = "LEAVE",
+            onConfirm = {
+                showExitConfirmation = false
+                onBack()
+            },
+            onDismiss = { showExitConfirmation = false }
+        )
+    }
+
+    if (showResetConfirmation) {
+        ConfirmActionDialog(
+            title = "Restart match?",
+            message = "All guti positions and collected powers will be reset.",
+            confirmLabel = "RESTART",
+            onConfirm = {
+                showResetConfirmation = false
+                resetGame()
+            },
+            onDismiss = { showResetConfirmation = false }
+        )
+    }
+
     if (state.winner != null) {
         ResultDialog(
             winner = state.winner!!,
@@ -186,17 +226,19 @@ fun GameScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(onClick = onBack, enabled = !isRolling) { Text("Back") }
+            OutlinedButton(onClick = { showExitConfirmation = true }, enabled = !interactionLocked) { Text("Back") }
             Text(
                 text = if (mode == GameMode.ONE_V_ONE) "1 vs 1" else "2 vs 2",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-            OutlinedButton(onClick = { resetGame() }, enabled = !isRolling) { Text("Reset") }
+            OutlinedButton(onClick = { showResetConfirmation = true }, enabled = !interactionLocked) { Text("Reset") }
         }
 
         Spacer(Modifier.height(12.dp))
         StatusCard(state = state, rolling = isRolling)
+        Spacer(Modifier.height(8.dp))
+        MatchProgressCard(state = state)
 
         AnimatedVisibility(
             visible = feedback != null,
@@ -439,6 +481,53 @@ private fun EventBanner(text: String) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
+    }
+}
+
+@Composable
+private fun ConfirmActionDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = { Text(message) },
+        confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
+}
+
+@Composable
+private fun MatchProgressCard(state: GameState) {
+    fun finished(side: Side): Int = state.players
+        .filter { it.side == side }
+        .sumOf { player -> player.tokens.count { it.isFinished } }
+
+    fun total(side: Side): Int = state.players
+        .filter { it.side == side }
+        .sumOf { it.tokens.size }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "YOU  ${finished(Side.HUMAN)}/${total(Side.HUMAN)} HOME",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "COMPUTER  ${finished(Side.COMPUTER)}/${total(Side.COMPUTER)} HOME",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

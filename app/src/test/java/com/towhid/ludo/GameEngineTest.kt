@@ -4,6 +4,7 @@ import com.towhid.ludo.game.ai.ComputerAi
 import com.towhid.ludo.game.engine.GameEngine
 import com.towhid.ludo.game.model.GameMode
 import com.towhid.ludo.game.model.GameState
+import com.towhid.ludo.game.model.GameStateSnapshotCodec
 import com.towhid.ludo.game.model.PlayerColor
 import com.towhid.ludo.game.model.PowerInventory
 import com.towhid.ludo.game.model.PowerType
@@ -369,6 +370,36 @@ class GameEngineTest {
         val decision = ComputerAi.chooseAfterRollDecision(state)
         assertFalse(decision.useDouble)
         assertEquals(0, decision.moveTokenId)
+    }
+
+    @Test
+    fun gameStateSnapshotRoundTripPreservesMatch() {
+        var state = GameState.newGame(GameMode.TWO_V_TWO).copy(
+            activeTurnIndex = 2,
+            dice = 4,
+            lastRoll = 4,
+            doubleActive = true,
+            bonusRollsPending = 1,
+            humanPowers = PowerInventory(double = 2, chooseRoll = 1, protect = 3, extraRoll = 1),
+            computerPowers = PowerInventory(double = 1, chooseRoll = 2, protect = 1, extraRoll = 2),
+            turnSerial = 17,
+            message = "Saved mid-turn"
+        )
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.YELLOW) {
+                player.copy(tokens = player.tokens.map { token ->
+                    when (token.id) {
+                        0 -> token.copy(progress = 42, protected = true)
+                        1 -> token.copy(progress = Token.FINISH)
+                        else -> token
+                    }
+                })
+            } else player
+        })
+
+        val restored = GameStateSnapshotCodec.restore(GameStateSnapshotCodec.snapshot(state))
+
+        assertEquals(state, restored)
     }
 
 }

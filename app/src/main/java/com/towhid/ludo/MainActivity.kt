@@ -16,7 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,17 +41,18 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TowhidLudoApp() {
-    var mode by remember { mutableStateOf<GameMode?>(null) }
+    var modeName by rememberSaveable { mutableStateOf<String?>(null) }
+    val mode = modeName?.let(GameMode::valueOf)
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         if (mode == null) {
             HomeScreen(
                 modifier = Modifier.padding(innerPadding),
-                onModeSelected = { mode = it }
+                onModeSelected = { modeName = it.name }
             )
         } else {
             GameScreen(
                 mode = mode!!,
-                onBack = { mode = null },
+                onBack = { modeName = null },
                 modifier = Modifier.padding(innerPadding)
             )
         }
@@ -74,7 +75,7 @@ private fun HomeScreen(
             fontWeight = FontWeight.Black
         )
         Text(
-            text = "Human vs Computer • Power Ludo",
+            text = "Human vs Computer • Power Ludo\nOffline best-move AI",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
