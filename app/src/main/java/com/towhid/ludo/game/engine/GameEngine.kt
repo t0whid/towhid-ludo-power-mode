@@ -12,17 +12,8 @@ object GameEngine {
     const val RING_SIZE = 52
     val safeRingIndexes: Set<Int> = setOf(0, 8, 13, 21, 26, 34, 39, 47)
 
-    /** Two symmetric cells for every power. */
-    val powerCells: Map<Int, PowerType> = mapOf(
-        5 to PowerType.DOUBLE,
-        31 to PowerType.DOUBLE,
-        11 to PowerType.CHOOSE_ROLL,
-        37 to PowerType.CHOOSE_ROLL,
-        18 to PowerType.PROTECT,
-        44 to PowerType.PROTECT,
-        24 to PowerType.EXTRA_ROLL,
-        50 to PowerType.EXTRA_ROLL
-    )
+    /** Power pickups live in GameState and relocate after collection. */
+
 
     fun legalMoves(state: GameState): List<Move> {
         val steps = state.movementSteps ?: return emptyList()
@@ -86,7 +77,7 @@ object GameEngine {
 
     fun protectToken(state: GameState, tokenId: Int): GameState {
         require(state.winner == null) { "Game is already finished" }
-        require(state.powers(state.activeSide).count(PowerType.PROTECT) > 0) { "No Protect power available" }
+        require(state.activePowers.count(PowerType.PROTECT) > 0) { "No Protect power available" }
         val player = state.activePlayer
         val token = player.tokens.firstOrNull { it.id == tokenId }
             ?: error("Unknown token")
@@ -111,13 +102,25 @@ object GameEngine {
         .toSet()
 
     fun canUsePower(state: GameState, type: PowerType): Boolean {
-        if (state.winner != null || state.powers(state.activeSide).count(type) <= 0) return false
+        if (state.winner != null || state.activePowers.count(type) <= 0) return false
         return when (type) {
             PowerType.DOUBLE -> state.dice != null && !state.doubleActive
             PowerType.CHOOSE_ROLL -> state.dice == null
             PowerType.PROTECT -> protectableTokenIds(state).isNotEmpty()
             PowerType.EXTRA_ROLL -> state.dice == null && state.bonusRollsPending == 0
         }
+    }
+
+    /**
+     * True when the current human/computer roll has no normal move but spending
+     * Double would create at least one legal move. UI auto-pass uses this so a
+     * valuable power opportunity is never skipped.
+     */
+    fun doubleWouldEnableMove(state: GameState): Boolean {
+        if (!canUsePower(state, PowerType.DOUBLE)) return false
+        if (legalMoves(state).isNotEmpty()) return false
+        val doubled = activateDouble(state)
+        return legalMoves(doubled).isNotEmpty()
     }
 
     fun passIfNoMove(state: GameState): GameState {
@@ -171,10 +174,15 @@ object GameEngine {
 
         var updatedState = state.copy(players = updatedPlayers)
         val collectedPower = if (newProgress in 0..50) {
-            powerCells[ringIndex(movingPlayer.color, newProgress)]
+            updatedState.powerCells[ringIndex(movingPlayer.color, newProgress)]
         } else null
         if (collectedPower != null) {
-            updatedState = grantPower(updatedState, movingPlayer.side, collectedPower)
+            updatedState = grantPower(updatedState, movingPlayer.color, collectedPower)
+            updatedState = relocateCollectedPower(
+                state = updatedState,
+                collectedRingIndex = ringIndex(movingPlayer.color, newProgress),
+                type = collectedPower
+            )
         }
 
         val winner = winnerFor(updatedState.players)
@@ -226,14 +234,38 @@ object GameEngine {
     }
 
     private fun consumePower(state: GameState, type: PowerType): GameState {
-        val side = state.activeSide
-        val inventory = state.powers(side)
+        val color = state.activeColor
+        val inventory = state.powers(color)
         require(inventory.count(type) > 0) { "No ${type.displayName} power available" }
-        return state.withPowers(side, inventory.consume(type))
+        return state.withPowers(color, inventory.consume(type))
     }
 
-    private fun grantPower(state: GameState, side: Side, type: PowerType): GameState {
-        return state.withPowers(side, state.powers(side).add(type))
+    private fun grantPower(state: GameState, color: PlayerColor, type: PowerType): GameState {
+        return state.withPowers(color, state.powers(color).add(type))
+    }
+
+    private fun relocateCollectedPower(
+        state: GameState,
+        collectedRingIndex: Int,
+        type: PowerType
+    ): GameState {
+        val occupiedByTokens = state.players.flatMap { player ->
+            player.tokens.filter { it.isOnTrack }.map { ringIndex(player.color, it.progress) }
+        }.toSet()
+        val remainingPowerCells = state.powerCells - collectedRingIndex
+        val candidates = (0 until RING_SIZE).filter { index ->
+            index !in safeRingIndexes &&
+                index !in remainingPowerCells &&
+                index !in occupiedByTokens
+        }
+        if (candidates.isEmpty()) return state
+
+        val nextSeed = state.powerSeed * 1664525 + 1013904223
+        val chosen = candidates[Math.floorMod(nextSeed, candidates.size)]
+        return state.copy(
+            powerCells = remainingPowerCells + (chosen to type),
+            powerSeed = nextSeed
+        )
     }
 
     private fun winnerFor(players: List<PlayerState>): Side? {

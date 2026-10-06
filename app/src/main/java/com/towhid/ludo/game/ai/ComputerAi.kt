@@ -242,8 +242,10 @@ object ComputerAi {
             }
         }
 
-        score += inventoryValue(state.computerPowers)
-        score -= inventoryValue(state.humanPowers)
+        for (player in state.players) {
+            val sign = if (player.side == Side.COMPUTER) 1.0 else -1.0
+            score += sign * inventoryValue(player.powers)
+        }
 
         if (state.bonusRollsPending > 0) {
             score += if (state.activeSide == Side.COMPUTER) 180.0 else -180.0
@@ -277,14 +279,14 @@ object ComputerAi {
 
                 if (distance in 1..6) {
                     danger += 130.0
-                    if (state.powers(opponent.side).chooseRoll > 0) danger += 170.0
+                    if (state.powers(opponent.color).chooseRoll > 0) danger += 170.0
                 }
 
                 // Double can only produce 2,4,6,8,10,12 — never an odd distance.
                 if (
                     distance in 2..12 &&
                     distance % 2 == 0 &&
-                    state.powers(opponent.side).double > 0
+                    state.powers(opponent.color).double > 0
                 ) {
                     danger += 55.0
                 }
@@ -302,7 +304,7 @@ object ComputerAi {
         if (destination in 0..50) {
             val ring = GameEngine.ringIndex(move.color, destination)
             if (ring in GameEngine.safeRingIndexes) score += 500
-            if (ring in GameEngine.powerCells) score += 700
+            if (ring in state.powerCells) score += 700
 
             val canCapture = state.players
                 .filter { it.side != state.activeSide }
@@ -330,10 +332,14 @@ object ComputerAi {
     private fun stateSignature(state: GameState): String = buildString {
         append(state.activeTurnIndex).append('|')
         append(state.bonusRollsPending).append('|')
-        append(inventorySignature(state.humanPowers)).append('|')
-        append(inventorySignature(state.computerPowers)).append('|')
+        append(state.powerSeed).append('|')
+        state.powerCells.toSortedMap().forEach { (index, type) ->
+            append(index).append(':').append(type.ordinal).append(',')
+        }
+        append('|')
         for (player in state.players) {
             append(player.color.ordinal).append(':')
+            append(inventorySignature(player.powers)).append(':')
             player.tokens.forEach { token ->
                 append(token.progress)
                     .append(if (token.protected) 's' else 'n')

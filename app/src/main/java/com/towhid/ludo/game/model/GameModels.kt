@@ -1,5 +1,7 @@
 package com.towhid.ludo.game.model
 
+import kotlin.random.Random
+
 enum class GameMode { ONE_V_ONE, TWO_V_TWO }
 
 enum class Side { HUMAN, COMPUTER }
@@ -39,6 +41,13 @@ data class PowerInventory(
         require(count(type) > 0) { "No ${type.displayName} power available" }
         return add(type, -1)
     }
+
+    operator fun plus(other: PowerInventory): PowerInventory = PowerInventory(
+        double = double + other.double,
+        chooseRoll = chooseRoll + other.chooseRoll,
+        protect = protect + other.protect,
+        extraRoll = extraRoll + other.extraRoll
+    )
 }
 
 data class Token(
@@ -60,7 +69,8 @@ data class Token(
 data class PlayerState(
     val color: PlayerColor,
     val side: Side,
-    val tokens: List<Token> = List(4) { Token(it) }
+    val tokens: List<Token> = List(4) { Token(it) },
+    val powers: PowerInventory = PowerInventory()
 )
 
 data class Move(
@@ -81,8 +91,10 @@ data class GameState(
     val doubleActive: Boolean = false,
     /** +1 powers waiting to be consumed by a non-six completed roll. */
     val bonusRollsPending: Int = 0,
-    val humanPowers: PowerInventory = PowerInventory(),
-    val computerPowers: PowerInventory = PowerInventory(),
+    /** Current moving power pickups on the 52-cell runway. */
+    val powerCells: Map<Int, PowerType>,
+    /** Deterministic pseudo-random seed so AI simulations see the same relocation result. */
+    val powerSeed: Int,
     val winner: Side? = null,
     val turnSerial: Long = 0,
     val message: String = "Roll the dice"
@@ -90,40 +102,66 @@ data class GameState(
     val activeColor: PlayerColor get() = turnOrder[activeTurnIndex]
     val activePlayer: PlayerState get() = players.first { it.color == activeColor }
     val activeSide: Side get() = activePlayer.side
+    val activePowers: PowerInventory get() = activePlayer.powers
     val movementSteps: Int? get() = dice?.let { if (doubleActive) it * 2 else it }
 
     fun player(color: PlayerColor): PlayerState = players.first { it.color == color }
+    fun powers(color: PlayerColor): PowerInventory = player(color).powers
 
-    fun powers(side: Side): PowerInventory = when (side) {
-        Side.HUMAN -> humanPowers
-        Side.COMPUTER -> computerPowers
-    }
+    fun teamPowers(side: Side): PowerInventory = players
+        .filter { it.side == side }
+        .fold(PowerInventory()) { total, player -> total + player.powers }
 
-    fun withPowers(side: Side, inventory: PowerInventory): GameState = when (side) {
-        Side.HUMAN -> copy(humanPowers = inventory)
-        Side.COMPUTER -> copy(computerPowers = inventory)
-    }
+    fun withPowers(color: PlayerColor, inventory: PowerInventory): GameState = copy(
+        players = players.map { player ->
+            if (player.color == color) player.copy(powers = inventory) else player
+        }
+    )
 
     companion object {
-        fun newGame(mode: GameMode): GameState {
+        private const val RING_SIZE = 52
+        private val SAFE_RING_INDEXES = setOf(0, 8, 13, 21, 26, 34, 39, 47)
+
+        fun newGame(mode: GameMode, seed: Int = Random.nextInt()): GameState {
+            // Human always starts. In 2v2 humans own Blue + Green, CPU owns Red + Yellow.
             val players = when (mode) {
                 GameMode.ONE_V_ONE -> listOf(
-                    PlayerState(PlayerColor.RED, Side.HUMAN),
-                    PlayerState(PlayerColor.YELLOW, Side.COMPUTER)
+                    PlayerState(PlayerColor.BLUE, Side.HUMAN),
+                    PlayerState(PlayerColor.RED, Side.COMPUTER)
                 )
                 GameMode.TWO_V_TWO -> listOf(
-                    PlayerState(PlayerColor.RED, Side.HUMAN),
-                    PlayerState(PlayerColor.GREEN, Side.COMPUTER),
-                    PlayerState(PlayerColor.YELLOW, Side.HUMAN),
-                    PlayerState(PlayerColor.BLUE, Side.COMPUTER)
+                    PlayerState(PlayerColor.BLUE, Side.HUMAN),
+                    PlayerState(PlayerColor.RED, Side.COMPUTER),
+                    PlayerState(PlayerColor.GREEN, Side.HUMAN),
+                    PlayerState(PlayerColor.YELLOW, Side.COMPUTER)
                 )
             }
             return GameState(
                 mode = mode,
                 players = players,
                 turnOrder = players.map { it.color },
+                powerCells = generateInitialPowerCells(seed),
+                powerSeed = seed,
                 message = "Your turn — roll the dice"
             )
+        }
+
+        private fun generateInitialPowerCells(seed: Int): Map<Int, PowerType> {
+            val random = Random(seed)
+            val eligible = (0 until RING_SIZE)
+                .filterNot { it in SAFE_RING_INDEXES }
+                .shuffled(random)
+            val types = listOf(
+                PowerType.DOUBLE,
+                PowerType.CHOOSE_ROLL,
+                PowerType.PROTECT,
+                PowerType.EXTRA_ROLL,
+                PowerType.DOUBLE,
+                PowerType.CHOOSE_ROLL,
+                PowerType.PROTECT,
+                PowerType.EXTRA_ROLL
+            )
+            return eligible.take(types.size).zip(types).toMap()
         }
     }
 }

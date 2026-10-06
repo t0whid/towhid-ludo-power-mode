@@ -9,22 +9,25 @@ import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
     primary = BrandGoldLight,
-    onPrimary = BrandInk,
-    secondary = Color(0xFF8FB9FF),
-    tertiary = BrandGold,
+    onPrimary = Color(0xFF3B2700),
+    secondary = BrandBlue,
+    tertiary = BrandRed,
     background = BrandPaperDark,
-    surface = BrandPaperDark,
-    onBackground = Color(0xFFF2F2F2),
-    onSurface = Color(0xFFF2F2F2)
+    surface = Color(0xFF102A43),
+    surfaceVariant = BrandInkLight,
+    onBackground = Color(0xFFF7FBFF),
+    onSurface = Color(0xFFF7FBFF),
+    onSurfaceVariant = Color(0xFFB9CDDA),
+    outline = Color(0xFF52738A)
 )
 
 private val LightColorScheme = lightColorScheme(
     primary = BrandInk,
     onPrimary = Color.White,
-    secondary = Color(0xFF2474D8),
+    secondary = BrandBlue,
     tertiary = BrandGold,
     background = BrandPaper,
-    surface = BrandPaper,
+    surface = Color.White,
     onBackground = BrandInk,
     onSurface = BrandInk
 )

@@ -95,8 +95,8 @@ private fun DrawScope.drawProtectIcon(center: Offset, iconSize: Float, tint: Col
         moveTo(center.x, center.y - half * 0.82f)
         lineTo(center.x + half * 0.68f, center.y - half * 0.50f)
         lineTo(center.x + half * 0.56f, center.y + half * 0.24f)
-        quadraticBezierTo(center.x + half * 0.40f, center.y + half * 0.72f, center.x, center.y + half * 0.92f)
-        quadraticBezierTo(center.x - half * 0.40f, center.y + half * 0.72f, center.x - half * 0.56f, center.y + half * 0.24f)
+        quadraticTo(center.x + half * 0.40f, center.y + half * 0.72f, center.x, center.y + half * 0.92f)
+        quadraticTo(center.x - half * 0.40f, center.y + half * 0.72f, center.x - half * 0.56f, center.y + half * 0.24f)
         lineTo(center.x - half * 0.68f, center.y - half * 0.50f)
         close()
     }
