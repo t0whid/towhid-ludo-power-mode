@@ -18,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,10 +29,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -289,7 +288,6 @@ fun GameScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 5.dp, vertical = 7.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -300,116 +298,180 @@ fun GameScreen(
                 onReset = { showResetConfirmation = true }
             )
 
-            Spacer(Modifier.height(18.dp))
-            SideZone(
-                state = state,
-                side = Side.COMPUTER,
-                rolling = isRolling,
-                rollingFace = rollingFace,
-                autoPassPending = false
-            )
+            Spacer(Modifier.height(3.dp))
 
-            Spacer(Modifier.height(4.dp))
-            Surface(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(22.dp, RoundedCornerShape(5.dp)),
-                shape = RoundedCornerShape(5.dp),
-                color = Color(0xFFF4F7FA),
-                border = BorderStroke(2.dp, Color(0xFF171A45).copy(alpha = 0.96f))
+                    .weight(1f)
             ) {
-                LudoBoard(
-                    state = state,
-                    selectableTokenIds = selectableIds,
-                    onTokenTap = { tokenId ->
-                        if (interactionLocked || state.activeSide != Side.HUMAN) return@LudoBoard
-                        if (protectMode) {
-                            if (tokenId in protectableIds && humanPowers.protect > 0) {
-                                state = GameEngine.protectToken(state, tokenId)
-                            }
-                            protectMode = false
-                        } else {
-                            val move = legalMoves.firstOrNull { it.tokenId == tokenId }
-                            if (move != null) {
-                                unlockAfter(move)
-                                state = GameEngine.playMove(state, move)
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(0.5.dp)
-                )
-            }
+                // Keep the whole match on one screen. The 118dp reserve is shared
+                // by the four corner seats around the square board.
+                val verticalRoom = if (maxHeight > 360.dp) maxHeight - 118.dp else maxHeight * 0.72f
+                val boardSize = if (maxWidth < verticalRoom) maxWidth else verticalRoom
 
-            AnimatedVisibility(
-                visible = feedback != null,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 2 }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 2 })
-            ) {
-                feedback?.let { EventBanner(it) }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            StatusPill(
-                state = state,
-                rolling = isRolling,
-                animationLock = animationLock,
-                autoPassPending = autoPassPending,
-                protectMode = protectMode,
-                legalMoves = legalMoves
-            )
-            Spacer(Modifier.height(7.dp))
-
-            HumanZone(
-                state = state,
-                rolling = isRolling,
-                rollingFace = rollingFace,
-                enabled = state.winner == null && !isRolling && !animationLock,
-                protectMode = protectMode,
-                showChooseRoll = showChooseRoll,
-                onRoll = {
-                    if (state.winner == null && state.activeSide == Side.HUMAN && state.dice == null && !isRolling && !animationLock) {
-                        showChooseRoll = false
-                        protectMode = false
-                        val currentSession = sessionId
-                        val rollState = state
-                        isRolling = true
-                        scope.launch {
-                            repeat(7) {
-                                rollingFace = Random.nextInt(1, 7)
-                                delay(52)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(boardSize)
+                        .shadow(22.dp, RoundedCornerShape(5.dp)),
+                    shape = RoundedCornerShape(5.dp),
+                    color = Color(0xFFF4F7FA),
+                    border = BorderStroke(2.dp, Color(0xFF171A45).copy(alpha = 0.96f))
+                ) {
+                    LudoBoard(
+                        state = state,
+                        selectableTokenIds = selectableIds,
+                        onTokenTap = { tokenId ->
+                            if (interactionLocked || state.activeSide != Side.HUMAN) return@LudoBoard
+                            if (protectMode) {
+                                if (tokenId in protectableIds && humanPowers.protect > 0) {
+                                    state = GameEngine.protectToken(state, tokenId)
+                                }
+                                protectMode = false
+                            } else {
+                                val move = legalMoves.firstOrNull { it.tokenId == tokenId }
+                                if (move != null) {
+                                    unlockAfter(move)
+                                    state = GameEngine.playMove(state, move)
+                                }
                             }
-                            if (sessionId == currentSession) {
-                                val finalRoll = Random.nextInt(1, 7)
-                                rollingFace = finalRoll
-                                state = GameEngine.beginRoll(rollState, finalRoll)
-                            }
-                            isRolling = false
-                        }
-                    }
-                },
-                onProtectModeChange = {
-                    protectMode = it
-                    if (it) showChooseRoll = false
-                },
-                onChooseRollToggle = {
-                    showChooseRoll = !showChooseRoll
-                    if (showChooseRoll) protectMode = false
-                },
-                onChooseRoll = { chosen ->
-                    if (!interactionLocked) {
-                        state = GameEngine.useChooseRoll(state, chosen)
-                        showChooseRoll = false
-                    }
-                },
-                onUseDouble = {
-                    if (!interactionLocked) state = GameEngine.activateDouble(state)
-                },
-                onUseExtraRoll = {
-                    if (!interactionLocked) state = GameEngine.useExtraRoll(state)
+                        },
+                        modifier = Modifier.padding(0.5.dp)
+                    )
                 }
-            )
 
-            Spacer(Modifier.height(13.dp))
+                CornerPlayerSeat(
+                    state = state,
+                    color = PlayerColor.RED,
+                    alignRight = false,
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
+                CornerPlayerSeat(
+                    state = state,
+                    color = PlayerColor.GREEN,
+                    alignRight = true,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
+                CornerPlayerSeat(
+                    state = state,
+                    color = PlayerColor.BLUE,
+                    alignRight = false,
+                    modifier = Modifier.align(Alignment.BottomStart)
+                )
+                CornerPlayerSeat(
+                    state = state,
+                    color = PlayerColor.YELLOW,
+                    alignRight = true,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
+
+                StatusPill(
+                    state = state,
+                    rolling = isRolling,
+                    animationLock = animationLock,
+                    autoPassPending = autoPassPending,
+                    protectMode = protectMode,
+                    legalMoves = legalMoves,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 17.dp - boardSize / 2f)
+                )
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = feedback != null,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 48.dp - boardSize / 2f),
+                    enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 2 }),
+                    exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 2 })
+                ) {
+                    feedback?.let { EventBanner(it) }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(76.dp)
+            ) {
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    HumanPowerOrbs(
+                        state = state,
+                        enabled = state.winner == null && !isRolling && !animationLock,
+                        protectMode = protectMode,
+                        showChooseRoll = showChooseRoll,
+                        onProtectModeChange = {
+                            protectMode = it
+                            if (it) showChooseRoll = false
+                        },
+                        onChooseRollToggle = {
+                            showChooseRoll = !showChooseRoll
+                            if (showChooseRoll) protectMode = false
+                        },
+                        onUseDouble = {
+                            if (!interactionLocked) state = GameEngine.activateDouble(state)
+                        },
+                        onUseExtraRoll = {
+                            if (!interactionLocked) state = GameEngine.useExtraRoll(state)
+                        }
+                    )
+
+                    DiceActionBubble(
+                        state = state,
+                        side = Side.HUMAN,
+                        rolling = isRolling,
+                        rollingFace = rollingFace,
+                        enabled = state.winner == null &&
+                            !interactionLocked &&
+                            state.activeSide == Side.HUMAN &&
+                            state.dice == null,
+                        autoPassPending = false,
+                        onRoll = {
+                            if (state.winner == null && state.activeSide == Side.HUMAN && state.dice == null && !isRolling && !animationLock) {
+                                showChooseRoll = false
+                                protectMode = false
+                                val currentSession = sessionId
+                                val rollState = state
+                                isRolling = true
+                                scope.launch {
+                                    repeat(7) {
+                                        rollingFace = Random.nextInt(1, 7)
+                                        delay(52)
+                                    }
+                                    if (sessionId == currentSession) {
+                                        val finalRoll = Random.nextInt(1, 7)
+                                        rollingFace = finalRoll
+                                        state = GameEngine.beginRoll(rollState, finalRoll)
+                                    }
+                                    isRolling = false
+                                }
+                            }
+                        }
+                    )
+                }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showChooseRoll && GameEngine.canUsePower(state, PowerType.CHOOSE_ROLL),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-50).dp)
+                ) {
+                    ChooseDiceTray(
+                        enabled = state.winner == null && !interactionLocked,
+                        onChooseRoll = { chosen ->
+                            if (!interactionLocked) {
+                                state = GameEngine.useChooseRoll(state, chosen)
+                                showChooseRoll = false
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -634,6 +696,87 @@ private fun HumanZone(
 
         AnimatedVisibility(visible = showChooseRoll && GameEngine.canUsePower(state, PowerType.CHOOSE_ROLL)) {
             ChooseDiceTray(enabled = enabled, onChooseRoll = onChooseRoll)
+        }
+    }
+}
+
+@Composable
+private fun CornerPlayerSeat(
+    state: GameState,
+    color: PlayerColor,
+    alignRight: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val player = state.players.firstOrNull { it.color == color } ?: return
+    val active = state.winner == null && state.activeColor == color
+    val accent = gameColor(color)
+    val label = when {
+        player.side == Side.HUMAN && state.mode == GameMode.TWO_V_TWO && color == PlayerColor.GREEN -> "PARTNER"
+        player.side == Side.HUMAN -> "YOU"
+        color == PlayerColor.YELLOW -> "CPU 2"
+        else -> "CPU 1"
+    }
+
+    @Composable
+    fun Avatar() {
+        Box(contentAlignment = Alignment.BottomEnd) {
+            PlayerAvatar(
+                side = player.side,
+                accent = accent,
+                active = active,
+                modifier = Modifier.size(52.dp)
+            )
+            Surface(
+                color = accent,
+                shape = RoundedCornerShape(7.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.72f)),
+                shadowElevation = 2.dp
+            ) {
+                Text(
+                    text = color.name.take(1),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun Info() {
+        Column(
+            horizontalAlignment = if (alignRight) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Surface(
+                color = Color(0xFF20255B).copy(alpha = 0.84f),
+                shape = RoundedCornerShape(9.dp),
+                border = BorderStroke(1.dp, if (active) accent else Color.White.copy(alpha = 0.08f))
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    color = if (active) Color.White else Color.White.copy(alpha = 0.70f),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            PlayerPowerCounts(powers = state.powers(color), active = active)
+        }
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        if (alignRight) {
+            Info()
+            Avatar()
+        } else {
+            Avatar()
+            Info()
         }
     }
 }
@@ -1072,7 +1215,8 @@ private fun StatusPill(
     animationLock: Boolean,
     autoPassPending: Boolean,
     protectMode: Boolean,
-    legalMoves: List<Move>
+    legalMoves: List<Move>,
+    modifier: Modifier = Modifier
 ) {
     val text = when {
         autoPassPending -> "No move • auto passing…"
@@ -1088,6 +1232,7 @@ private fun StatusPill(
     }
 
     Surface(
+        modifier = modifier,
         color = Color(0xFF20255B).copy(alpha = 0.80f),
         shape = RoundedCornerShape(17.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
