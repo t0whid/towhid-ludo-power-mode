@@ -339,7 +339,10 @@ private fun HumanPowerControls(
     onUseExtraRoll: () -> Unit
 ) {
     val powers = state.powers(Side.HUMAN)
-    val canProtect = enabled && powers.protect > 0 && GameEngine.protectableTokenIds(state).isNotEmpty()
+    val canProtect = enabled && GameEngine.canUsePower(state, PowerType.PROTECT)
+    val canChooseRoll = enabled && GameEngine.canUsePower(state, PowerType.CHOOSE_ROLL)
+    val canExtraRoll = enabled && GameEngine.canUsePower(state, PowerType.EXTRA_ROLL)
+    val canDouble = enabled && GameEngine.canUsePower(state, PowerType.DOUBLE)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -352,7 +355,7 @@ private fun HumanPowerControls(
             ) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = enabled && powers.chooseRoll > 0,
+                    enabled = canChooseRoll,
                     onClick = onChooseRollToggle
                 ) {
                     PowerIcon(PowerType.CHOOSE_ROLL, size = 18.dp)
@@ -361,7 +364,7 @@ private fun HumanPowerControls(
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = enabled && powers.extraRoll > 0 && state.bonusRollsPending == 0,
+                    enabled = canExtraRoll,
                     onClick = onUseExtraRoll
                 ) {
                     PowerIcon(PowerType.EXTRA_ROLL, size = 18.dp)
@@ -372,7 +375,7 @@ private fun HumanPowerControls(
         } else {
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = enabled && powers.double > 0 && !state.doubleActive,
+                enabled = canDouble,
                 onClick = onUseDouble
             ) {
                 PowerIcon(PowerType.DOUBLE, size = 18.dp)
@@ -401,7 +404,7 @@ private fun HumanPowerControls(
             )
         }
 
-        if (showChooseRoll && state.dice == null && powers.chooseRoll > 0) {
+        if (showChooseRoll && canChooseRoll) {
             Text(
                 text = "Choose your roll",
                 modifier = Modifier.fillMaxWidth(),

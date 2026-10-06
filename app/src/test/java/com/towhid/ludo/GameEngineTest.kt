@@ -189,4 +189,186 @@ class GameEngineTest {
         val decision = ComputerAi.choosePreRollDecision(state)
         assertEquals(1, decision.chosenRoll)
     }
+    @Test
+    fun safeCellPreventsCapture() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE)
+        state = state.copy(players = state.players.map { player ->
+            when (player.color) {
+                PlayerColor.RED -> player.copy(tokens = player.tokens.map {
+                    if (it.id == 0) it.copy(progress = 6) else it
+                })
+                PlayerColor.YELLOW -> player.copy(tokens = player.tokens.map {
+                    if (it.id == 0) it.copy(progress = 34) else it
+                })
+                else -> player
+            }
+        })
+
+        state = GameEngine.beginRoll(state, 2)
+        val move = GameEngine.legalMoves(state).first { it.tokenId == 0 }
+        state = GameEngine.playMove(state, move)
+
+        assertEquals(34, state.player(PlayerColor.YELLOW).tokens[0].progress)
+    }
+
+    @Test
+    fun protectedTokenLosesShieldWhenItMoves() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE)
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.RED) {
+                player.copy(tokens = player.tokens.map {
+                    if (it.id == 0) it.copy(progress = 10, protected = true) else it
+                })
+            } else player
+        })
+
+        state = GameEngine.beginRoll(state, 2)
+        val move = GameEngine.legalMoves(state).first { it.tokenId == 0 }
+        state = GameEngine.playMove(state, move)
+
+        assertFalse(state.player(PlayerColor.RED).tokens[0].protected)
+    }
+
+    @Test
+    fun armedExtraRollSurvivesSixThenConsumesOnNextNonSix() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE).copy(
+            humanPowers = PowerInventory(extraRoll = 1)
+        )
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.RED) {
+                player.copy(tokens = player.tokens.map {
+                    if (it.id == 0) it.copy(progress = 1) else it
+                })
+            } else player
+        })
+
+        state = GameEngine.useExtraRoll(state)
+        state = GameEngine.beginRoll(state, 6)
+        state = GameEngine.playMove(state, GameEngine.legalMoves(state).first { it.tokenId == 0 })
+        assertEquals(PlayerColor.RED, state.activeColor)
+        assertEquals(1, state.bonusRollsPending)
+
+        state = GameEngine.beginRoll(state, 2)
+        state = GameEngine.playMove(state, GameEngine.legalMoves(state).first { it.tokenId == 0 })
+        assertEquals(PlayerColor.RED, state.activeColor)
+        assertEquals(0, state.bonusRollsPending)
+    }
+
+    @Test
+    fun doubleOnNaturalSixStillGrantsSixExtraTurn() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE).copy(
+            humanPowers = PowerInventory(double = 1)
+        )
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.RED) {
+                player.copy(tokens = player.tokens.map {
+                    if (it.id == 0) it.copy(progress = 1) else it
+                })
+            } else player
+        })
+
+        state = GameEngine.beginRoll(state, 6)
+        state = GameEngine.activateDouble(state)
+        state = GameEngine.playMove(state, GameEngine.legalMoves(state).first { it.tokenId == 0 })
+
+        assertEquals(PlayerColor.RED, state.activeColor)
+        assertEquals(13, state.player(PlayerColor.RED).tokens[0].progress)
+    }
+
+    @Test
+    fun twoVsTwoWinnerRequiresBothTeamColorsToFinish() {
+        var state = GameState.newGame(GameMode.TWO_V_TWO)
+        state = state.copy(players = state.players.map { player ->
+            when (player.color) {
+                PlayerColor.RED -> player.copy(tokens = player.tokens.map { token ->
+                    if (token.id == 0) token.copy(progress = 55) else token.copy(progress = Token.FINISH)
+                })
+                PlayerColor.YELLOW -> player.copy(tokens = player.tokens.map { token ->
+                    if (token.id == 0) token.copy(progress = 20) else token.copy(progress = Token.FINISH)
+                })
+                else -> player
+            }
+        })
+
+        state = GameEngine.beginRoll(state, 1)
+        state = GameEngine.playMove(state, GameEngine.legalMoves(state).first { it.tokenId == 0 })
+
+        assertEquals(null, state.winner)
+    }
+
+    @Test
+    fun twoVsTwoDeclaresWinnerWhenBothTeamColorsFinish() {
+        var state = GameState.newGame(GameMode.TWO_V_TWO)
+        state = state.copy(players = state.players.map { player ->
+            when (player.color) {
+                PlayerColor.RED -> player.copy(tokens = player.tokens.map { token ->
+                    if (token.id == 0) token.copy(progress = 55) else token.copy(progress = Token.FINISH)
+                })
+                PlayerColor.YELLOW -> player.copy(tokens = player.tokens.map { token ->
+                    token.copy(progress = Token.FINISH)
+                })
+                else -> player
+            }
+        })
+
+        state = GameEngine.beginRoll(state, 1)
+        state = GameEngine.playMove(state, GameEngine.legalMoves(state).first { it.tokenId == 0 })
+
+        assertEquals(Side.HUMAN, state.winner)
+    }
+
+    @Test
+    fun powersAreUnavailableAfterGameEnds() {
+        val state = GameState.newGame(GameMode.ONE_V_ONE).copy(
+            humanPowers = PowerInventory(double = 1, chooseRoll = 1, protect = 1, extraRoll = 1),
+            winner = Side.HUMAN
+        )
+
+        PowerType.entries.forEach { type ->
+            assertFalse(GameEngine.canUsePower(state, type))
+        }
+    }
+
+    @Test
+    fun computerUsesDoubleWhenItImmediatelyFinishesTheGame() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE).copy(
+            activeTurnIndex = 1,
+            computerPowers = PowerInventory(double = 1)
+        )
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.YELLOW) {
+                player.copy(tokens = player.tokens.map { token ->
+                    if (token.id == 0) token.copy(progress = 50)
+                    else token.copy(progress = Token.FINISH)
+                })
+            } else player
+        })
+        state = GameEngine.beginRoll(state, 3)
+
+        val decision = ComputerAi.chooseAfterRollDecision(state)
+        assertTrue(decision.useDouble)
+        assertEquals(0, decision.moveTokenId)
+    }
+
+    @Test
+    fun computerDoesNotWasteDoubleWhenNaturalRollAlreadyWins() {
+        var state = GameState.newGame(GameMode.ONE_V_ONE).copy(
+            activeTurnIndex = 1,
+            computerPowers = PowerInventory(double = 1)
+        )
+        state = state.copy(players = state.players.map { player ->
+            if (player.color == PlayerColor.YELLOW) {
+                player.copy(tokens = player.tokens.map { token ->
+                    if (token.id == 0) token.copy(progress = 55)
+                    else token.copy(progress = Token.FINISH)
+                })
+            } else player
+        })
+        state = GameEngine.beginRoll(state, 1)
+
+        val decision = ComputerAi.chooseAfterRollDecision(state)
+        assertFalse(decision.useDouble)
+        assertEquals(0, decision.moveTokenId)
+    }
+
 }

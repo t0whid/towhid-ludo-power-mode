@@ -3,23 +3,24 @@ package com.towhid.ludo.game.ai
 import com.towhid.ludo.game.engine.GameEngine
 import com.towhid.ludo.game.model.GameState
 import com.towhid.ludo.game.model.Move
+import com.towhid.ludo.game.model.PlayerColor
 import com.towhid.ludo.game.model.PowerInventory
 import com.towhid.ludo.game.model.PowerType
 import com.towhid.ludo.game.model.Side
 import com.towhid.ludo.game.model.Token
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Deterministic offline best-move search. No API/network is used.
  *
- * Current-turn power combinations are explicitly compared. Future dice are treated as
- * six equally likely outcomes, with computer turns maximizing and human turns minimizing
- * the board evaluation.
+ * Dice rolls are chance nodes. Both sides are assumed to use every available power
+ * optimally in future turns, so the computer searches against the strongest legal
+ * human response rather than against a simplified/random opponent.
  */
 object ComputerAi {
-    private const val SEARCH_DEPTH = 3
+    /** Current action + one fully power-aware future roll/action decision. */
+    private const val SEARCH_DEPTH = 2
     private const val WIN_SCORE = 1_000_000.0
+    private const val SCORE_EPSILON = 0.000001
 
     data class PreRollDecision(
         val useExtraRoll: Boolean = false,
@@ -37,42 +38,45 @@ object ComputerAi {
         require(state.activeSide == Side.COMPUTER)
         require(state.dice == null)
 
-        val inventory = state.powers(Side.COMPUTER)
-        val extraOptions = if (
-            inventory.count(PowerType.EXTRA_ROLL) > 0 && state.bonusRollsPending == 0
-        ) listOf(false, true) else listOf(false)
-        val chooseOptions: List<Int?> = if (inventory.count(PowerType.CHOOSE_ROLL) > 0) {
-            listOf<Int?>(null) + (1..6).map { it }
-        } else listOf(null)
-
-        var best = PreRollDecision()
-        var bestScore = Double.NEGATIVE_INFINITY
         val cache = HashMap<SearchKey, Double>()
+        var bestDecision = PreRollDecision()
+        var bestScore = Double.NEGATIVE_INFINITY
 
-        for (useExtra in extraOptions) {
+        for (useExtra in extraRollOptions(state)) {
             val extraState = if (useExtra) GameEngine.useExtraRoll(state) else state
-            for (chosen in chooseOptions) {
-                val score = if (chosen == null) {
-                    (1..6).sumOf { roll ->
-                        bestAfterRollValue(GameEngine.beginRoll(extraState, roll), cache) / 6.0
-                    }
-                } else {
-                    bestAfterRollValue(GameEngine.useChooseRoll(extraState, chosen), cache)
-                }
 
-                if (score > bestScore) {
-                    bestScore = score
-                    best = PreRollDecision(useExtraRoll = useExtra, chosenRoll = chosen)
+            // Normal roll is a chance node: all faces are equally likely.
+            val normalScore = (1..6).sumOf { roll ->
+                val rolled = GameEngine.beginRoll(extraState, roll)
+                findBestAfterRoll(rolled, SEARCH_DEPTH - 1, cache).second / 6.0
+            }
+            if (strictlyBetter(normalScore, bestScore, maximizing = true)) {
+                bestScore = normalScore
+                bestDecision = PreRollDecision(useExtraRoll = useExtra)
+            }
+
+            if (GameEngine.canUsePower(extraState, PowerType.CHOOSE_ROLL)) {
+                for (chosen in 1..6) {
+                    val chosenState = GameEngine.useChooseRoll(extraState, chosen)
+                    val score = findBestAfterRoll(chosenState, SEARCH_DEPTH - 1, cache).second
+                    if (strictlyBetter(score, bestScore, maximizing = true)) {
+                        bestScore = score
+                        bestDecision = PreRollDecision(
+                            useExtraRoll = useExtra,
+                            chosenRoll = chosen
+                        )
+                    }
                 }
             }
         }
-        return best
+
+        return bestDecision
     }
 
     fun chooseAfterRollDecision(state: GameState): AfterRollDecision {
         require(state.activeSide == Side.COMPUTER)
         require(state.dice != null)
-        return findBestAfterRoll(state, HashMap()).first
+        return findBestAfterRoll(state, SEARCH_DEPTH - 1, HashMap()).first
     }
 
     /** Compatibility helper for tests/callers that only need the selected move. */
@@ -85,105 +89,137 @@ object ComputerAi {
         return GameEngine.legalMoves(working).firstOrNull { it.tokenId == tokenId }
     }
 
-    private fun bestAfterRollValue(
-        state: GameState,
-        cache: MutableMap<SearchKey, Double>
-    ): Double = findBestAfterRoll(state, cache).second
-
     private fun findBestAfterRoll(
         state: GameState,
+        futureDepth: Int,
         cache: MutableMap<SearchKey, Double>
     ): Pair<AfterRollDecision, Double> {
-        val inventory = state.powers(state.activeSide)
-        val protectOptions: List<Int?> = if (inventory.count(PowerType.PROTECT) > 0) {
-            listOf<Int?>(null) + GameEngine.protectableTokenIds(state).sorted().map { it }
-        } else listOf(null)
-        val doubleOptions = if (inventory.count(PowerType.DOUBLE) > 0 && !state.doubleActive) {
-            listOf(false, true)
-        } else listOf(false)
-
         val maximizing = state.activeSide == Side.COMPUTER
         var bestDecision = AfterRollDecision()
         var bestScore = if (maximizing) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
+        var bestTieBreak = Int.MIN_VALUE
 
-        for (protectId in protectOptions) {
-            val protectedState = if (protectId != null) GameEngine.protectToken(state, protectId) else state
-            for (useDouble in doubleOptions) {
+        for (protectId in protectOptions(state)) {
+            val protectedState = if (protectId != null) {
+                GameEngine.protectToken(state, protectId)
+            } else {
+                state
+            }
+
+            for (useDouble in doubleOptions(protectedState)) {
                 val working = if (useDouble) GameEngine.activateDouble(protectedState) else protectedState
                 val moves = GameEngine.legalMoves(working)
+
                 if (moves.isEmpty()) {
-                    val value = expectFuture(GameEngine.passIfNoMove(working), SEARCH_DEPTH - 1, cache)
-                    if (isBetter(value, bestScore, maximizing)) {
+                    val after = GameEngine.passIfNoMove(working)
+                    val value = futureValue(after, futureDepth, cache)
+                    if (strictlyBetter(value, bestScore, maximizing)) {
                         bestScore = value
-                        bestDecision = AfterRollDecision(protectTokenId = protectId, useDouble = useDouble)
+                        bestDecision = AfterRollDecision(
+                            protectTokenId = protectId,
+                            useDouble = useDouble
+                        )
+                        bestTieBreak = Int.MIN_VALUE
                     }
-                } else {
-                    for (move in moves) {
-                        val after = GameEngine.playMove(working, move)
-                        val value = expectFuture(after, SEARCH_DEPTH - 1, cache)
-                        if (isBetter(value, bestScore, maximizing) ||
-                            (value == bestScore && tieBreakScore(working, move) > decisionTieBreak(working, bestDecision))
-                        ) {
-                            bestScore = value
-                            bestDecision = AfterRollDecision(
-                                protectTokenId = protectId,
-                                useDouble = useDouble,
-                                moveTokenId = move.tokenId
-                            )
-                        }
+                    continue
+                }
+
+                for (move in moves) {
+                    val after = GameEngine.playMove(working, move)
+                    val value = futureValue(after, futureDepth, cache)
+                    val tieBreak = tieBreakScore(working, move)
+
+                    val better = strictlyBetter(value, bestScore, maximizing)
+                    val tied = scoresEqual(value, bestScore)
+                    val betterTie = tied && tieBreak > bestTieBreak
+                    if (better || betterTie) {
+                        bestScore = value
+                        bestTieBreak = tieBreak
+                        bestDecision = AfterRollDecision(
+                            protectTokenId = protectId,
+                            useDouble = useDouble,
+                            moveTokenId = move.tokenId
+                        )
                     }
                 }
             }
         }
+
         return bestDecision to bestScore
     }
 
-    private fun expectFuture(
+    private fun futureValue(
         state: GameState,
         depth: Int,
         cache: MutableMap<SearchKey, Double>
     ): Double {
         state.winner?.let { return if (it == Side.COMPUTER) WIN_SCORE else -WIN_SCORE }
         if (depth <= 0) return evaluate(state)
+        return bestPreRollValue(state, depth, cache)
+    }
+
+    /**
+     * Full power-aware expectiminimax node for a fresh turn.
+     *
+     * The active side may arm +1, may spend Choose Roll, or may accept a random roll.
+     * After the face is known it may protect, double, and choose its best legal token.
+     */
+    private fun bestPreRollValue(
+        state: GameState,
+        depth: Int,
+        cache: MutableMap<SearchKey, Double>
+    ): Double {
+        state.winner?.let { return if (it == Side.COMPUTER) WIN_SCORE else -WIN_SCORE }
+        if (depth <= 0) return evaluate(state)
+        require(state.dice == null)
 
         val key = SearchKey(stateSignature(state), depth)
         cache[key]?.let { return it }
 
-        var total = 0.0
-        for (dice in 1..6) {
-            val rolled = GameEngine.beginRoll(state, dice)
-            total += bestFutureRollValue(rolled, depth, cache) / 6.0
-        }
-        cache[key] = total
-        return total
-    }
-
-    /** Future search includes smart Double use while keeping branching mobile-friendly. */
-    private fun bestFutureRollValue(
-        rolled: GameState,
-        depth: Int,
-        cache: MutableMap<SearchKey, Double>
-    ): Double {
-        val maximizing = rolled.activeSide == Side.COMPUTER
-        val canDouble = rolled.powers(rolled.activeSide).count(PowerType.DOUBLE) > 0
-        val variants = if (canDouble) listOf(rolled, GameEngine.activateDouble(rolled)) else listOf(rolled)
+        val maximizing = state.activeSide == Side.COMPUTER
         var best = if (maximizing) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
 
-        for (variant in variants) {
-            val moves = GameEngine.legalMoves(variant)
-            val value = if (moves.isEmpty()) {
-                expectFuture(GameEngine.passIfNoMove(variant), depth - 1, cache)
-            } else {
-                var branchBest = if (maximizing) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
-                for (move in moves) {
-                    val child = expectFuture(GameEngine.playMove(variant, move), depth - 1, cache)
-                    branchBest = if (maximizing) max(branchBest, child) else min(branchBest, child)
-                }
-                branchBest
+        for (useExtra in extraRollOptions(state)) {
+            val extraState = if (useExtra) GameEngine.useExtraRoll(state) else state
+
+            val randomRollValue = (1..6).sumOf { roll ->
+                val rolled = GameEngine.beginRoll(extraState, roll)
+                findBestAfterRoll(rolled, depth - 1, cache).second / 6.0
             }
-            best = if (maximizing) max(best, value) else min(best, value)
+            best = chooseBetter(best, randomRollValue, maximizing)
+
+            if (GameEngine.canUsePower(extraState, PowerType.CHOOSE_ROLL)) {
+                for (chosen in 1..6) {
+                    val chosenState = GameEngine.useChooseRoll(extraState, chosen)
+                    val chosenValue = findBestAfterRoll(chosenState, depth - 1, cache).second
+                    best = chooseBetter(best, chosenValue, maximizing)
+                }
+            }
         }
+
+        cache[key] = best
         return best
+    }
+
+    private fun protectOptions(state: GameState): List<Int?> {
+        if (!GameEngine.canUsePower(state, PowerType.PROTECT)) return listOf(null)
+        return listOf<Int?>(null) + GameEngine.protectableTokenIds(state).sorted()
+    }
+
+    private fun doubleOptions(state: GameState): List<Boolean> {
+        return if (GameEngine.canUsePower(state, PowerType.DOUBLE)) {
+            listOf(false, true)
+        } else {
+            listOf(false)
+        }
+    }
+
+    private fun extraRollOptions(state: GameState): List<Boolean> {
+        return if (GameEngine.canUsePower(state, PowerType.EXTRA_ROLL)) {
+            listOf(false, true)
+        } else {
+            listOf(false)
+        }
     }
 
     private fun evaluate(state: GameState): Double {
@@ -195,13 +231,20 @@ object ComputerAi {
                     token.isFinished -> 2_500.0
                     token.isHome -> 0.0
                     token.isInHomeLane -> 900.0 + token.progress * 8.0
-                    else -> 120.0 + token.progress * 8.0 + safetyValue(state, player.side, player.color, token)
+                    else -> 120.0 + token.progress * 8.0 + safetyValue(
+                        state = state,
+                        side = player.side,
+                        color = player.color,
+                        token = token
+                    )
                 }
                 score += sign * tokenScore
             }
         }
+
         score += inventoryValue(state.computerPowers)
         score -= inventoryValue(state.humanPowers)
+
         if (state.bonusRollsPending > 0) {
             score += if (state.activeSide == Side.COMPUTER) 180.0 else -180.0
         }
@@ -217,7 +260,7 @@ object ComputerAi {
     private fun safetyValue(
         state: GameState,
         side: Side,
-        color: com.towhid.ludo.game.model.PlayerColor,
+        color: PlayerColor,
         token: Token
     ): Double {
         val index = GameEngine.ringIndex(color, token.progress)
@@ -229,10 +272,21 @@ object ComputerAi {
             for (other in opponent.tokens.filter { it.isOnTrack }) {
                 val opponentIndex = GameEngine.ringIndex(opponent.color, other.progress)
                 val distance = (index - opponentIndex + GameEngine.RING_SIZE) % GameEngine.RING_SIZE
-                if (distance in 1..6 && other.progress + distance <= 50) {
+                val canReachBeforeHomeLane = other.progress + distance <= 50
+                if (!canReachBeforeHomeLane) continue
+
+                if (distance in 1..6) {
                     danger += 130.0
                     if (state.powers(opponent.side).chooseRoll > 0) danger += 170.0
-                    if (distance in 2..12 && state.powers(opponent.side).double > 0) danger += 55.0
+                }
+
+                // Double can only produce 2,4,6,8,10,12 — never an odd distance.
+                if (
+                    distance in 2..12 &&
+                    distance % 2 == 0 &&
+                    state.powers(opponent.side).double > 0
+                ) {
+                    danger += 55.0
                 }
             }
         }
@@ -243,34 +297,36 @@ object ComputerAi {
         val token = state.activePlayer.tokens.first { it.id == move.tokenId }
         val destination = if (token.isHome) 0 else token.progress + move.dice
         var score = destination
+
         if (destination == Token.FINISH) score += 10_000
         if (destination in 0..50) {
             val ring = GameEngine.ringIndex(move.color, destination)
             if (ring in GameEngine.safeRingIndexes) score += 500
             if (ring in GameEngine.powerCells) score += 700
+
             val canCapture = state.players
                 .filter { it.side != state.activeSide }
-                .flatMap { player -> player.tokens.map { token -> player.color to token } }
+                .flatMap { player -> player.tokens.map { other -> player.color to other } }
                 .any { (color, other) ->
-                    other.isOnTrack && !other.protected && GameEngine.ringIndex(color, other.progress) == ring
+                    other.isOnTrack &&
+                        !other.protected &&
+                        GameEngine.ringIndex(color, other.progress) == ring
                 }
             if (canCapture) score += 5_000
         }
         return score
     }
 
-    private fun decisionTieBreak(state: GameState, decision: AfterRollDecision): Int {
-        val tokenId = decision.moveTokenId ?: return Int.MIN_VALUE
-        var working = state
-        decision.protectTokenId?.let { working = GameEngine.protectToken(working, it) }
-        if (decision.useDouble) working = GameEngine.activateDouble(working)
-        val move = GameEngine.legalMoves(working).firstOrNull { it.tokenId == tokenId } ?: return Int.MIN_VALUE
-        return tieBreakScore(working, move)
-    }
+    private fun chooseBetter(current: Double, candidate: Double, maximizing: Boolean): Double =
+        if (strictlyBetter(candidate, current, maximizing)) candidate else current
 
-    private fun isBetter(value: Double, best: Double, maximizing: Boolean): Boolean =
-        if (maximizing) value > best else value < best
+    private fun strictlyBetter(value: Double, best: Double, maximizing: Boolean): Boolean =
+        if (maximizing) value > best + SCORE_EPSILON else value < best - SCORE_EPSILON
 
+    private fun scoresEqual(first: Double, second: Double): Boolean =
+        kotlin.math.abs(first - second) <= SCORE_EPSILON
+
+    /** Cache only fresh-turn states; dice/double are intentionally absent. */
     private fun stateSignature(state: GameState): String = buildString {
         append(state.activeTurnIndex).append('|')
         append(state.bonusRollsPending).append('|')
@@ -278,8 +334,10 @@ object ComputerAi {
         append(inventorySignature(state.computerPowers)).append('|')
         for (player in state.players) {
             append(player.color.ordinal).append(':')
-            player.tokens.forEach {
-                append(it.progress).append(if (it.protected) 's' else 'n').append(',')
+            player.tokens.forEach { token ->
+                append(token.progress)
+                    .append(if (token.protected) 's' else 'n')
+                    .append(',')
             }
             append('|')
         }

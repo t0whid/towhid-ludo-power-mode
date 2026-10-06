@@ -58,7 +58,7 @@ object GameEngine {
 
     fun useChooseRoll(state: GameState, chosen: Int): GameState {
         require(chosen in 1..6)
-        require(state.dice == null) { "Choose Roll must be used before rolling" }
+        require(canUsePower(state, PowerType.CHOOSE_ROLL)) { "Choose Roll is not available now" }
         val updated = consumePower(state, PowerType.CHOOSE_ROLL)
         return beginRoll(updated, chosen).copy(
             message = "${displayName(state.activeColor)} chose $chosen"
@@ -66,10 +66,9 @@ object GameEngine {
     }
 
     fun activateDouble(state: GameState): GameState {
-        require(state.dice != null) { "Double can only be used after a roll" }
-        require(!state.doubleActive) { "Double is already active" }
+        require(canUsePower(state, PowerType.DOUBLE)) { "Double is not available now" }
         val updated = consumePower(state, PowerType.DOUBLE)
-        val steps = state.dice * 2
+        val steps = requireNotNull(state.dice) * 2
         return updated.copy(
             doubleActive = true,
             message = "${displayName(state.activeColor)} doubled ${state.dice} to $steps"
@@ -77,8 +76,7 @@ object GameEngine {
     }
 
     fun useExtraRoll(state: GameState): GameState {
-        require(state.dice == null) { "+1 Roll must be armed before rolling" }
-        require(state.bonusRollsPending == 0) { "An extra roll is already armed" }
+        require(canUsePower(state, PowerType.EXTRA_ROLL)) { "+1 Roll is not available now" }
         val updated = consumePower(state, PowerType.EXTRA_ROLL)
         return updated.copy(
             bonusRollsPending = 1,
@@ -87,6 +85,8 @@ object GameEngine {
     }
 
     fun protectToken(state: GameState, tokenId: Int): GameState {
+        require(state.winner == null) { "Game is already finished" }
+        require(state.powers(state.activeSide).count(PowerType.PROTECT) > 0) { "No Protect power available" }
         val player = state.activePlayer
         val token = player.tokens.firstOrNull { it.id == tokenId }
             ?: error("Unknown token")
@@ -109,6 +109,16 @@ object GameEngine {
         .filter { !it.isHome && !it.isFinished && !it.protected }
         .map { it.id }
         .toSet()
+
+    fun canUsePower(state: GameState, type: PowerType): Boolean {
+        if (state.winner != null || state.powers(state.activeSide).count(type) <= 0) return false
+        return when (type) {
+            PowerType.DOUBLE -> state.dice != null && !state.doubleActive
+            PowerType.CHOOSE_ROLL -> state.dice == null
+            PowerType.PROTECT -> protectableTokenIds(state).isNotEmpty()
+            PowerType.EXTRA_ROLL -> state.dice == null && state.bonusRollsPending == 0
+        }
+    }
 
     fun passIfNoMove(state: GameState): GameState {
         val naturalRoll = state.dice ?: return state
