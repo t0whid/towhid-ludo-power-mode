@@ -3,23 +3,23 @@ package com.towhid.ludo.ui.game
 import androidx.compose.ui.graphics.Color
 import com.towhid.ludo.game.model.PlayerColor
 
-// Premium game-room palette: purple/indigo shell with bright arcade pieces.
-val GameNightTop = Color(0xFF45488D)
-val GameNightMid = Color(0xFF393C7D)
-val GameNightBottom = Color(0xFF292C64)
-val GamePanel = Color(0xFF2D326F)
-val GamePanelDeep = Color(0xFF1B2052)
-val GamePanelStroke = Color(0xFF6970B8)
-val GameGold = Color(0xFFFFCB3D)
-val GameGoldDeep = Color(0xFFD9920C)
-val GameCream = Color(0xFFF7FAFD)
-val GameMuted = Color(0xFFB6BCE0)
-val GameDanger = Color(0xFFFF5664)
-val GameSuccess = Color(0xFF54DE93)
+// Arcade game-room palette inspired by classic premium mobile Ludo rooms.
+val GameNightTop = Color(0xFF45488F)
+val GameNightMid = Color(0xFF393D82)
+val GameNightBottom = Color(0xFF2D316E)
+val GamePanel = Color(0xFF30356F)
+val GamePanelDeep = Color(0xFF181D4B)
+val GamePanelStroke = Color(0xFF767CC2)
+val GameGold = Color(0xFFFFCF3F)
+val GameGoldDeep = Color(0xFFD88C0A)
+val GameCream = Color(0xFFF8FAFF)
+val GameMuted = Color(0xFFBBC2E5)
+val GameDanger = Color(0xFFFF5965)
+val GameSuccess = Color(0xFF55DF92)
 
 fun gameColor(color: PlayerColor): Color = when (color) {
-    PlayerColor.RED -> Color(0xFFF14A3F)
-    PlayerColor.GREEN -> Color(0xFF0ACB62)
-    PlayerColor.YELLOW -> Color(0xFFFFC928)
-    PlayerColor.BLUE -> Color(0xFF24A8F2)
+    PlayerColor.RED -> Color(0xFFF04A39)
+    PlayerColor.GREEN -> Color(0xFF12C967)
+    PlayerColor.YELLOW -> Color(0xFFFFCC20)
+    PlayerColor.BLUE -> Color(0xFF22A9F3)
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -289,7 +290,7 @@ fun GameScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 7.dp, vertical = 9.dp),
+                .padding(horizontal = 5.dp, vertical = 7.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             GameTopBar(
@@ -299,7 +300,7 @@ fun GameScreen(
                 onReset = { showResetConfirmation = true }
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
             SideZone(
                 state = state,
                 side = Side.COMPUTER,
@@ -308,14 +309,14 @@ fun GameScreen(
                 autoPassPending = false
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(17.dp, RoundedCornerShape(7.dp)),
-                shape = RoundedCornerShape(7.dp),
+                    .shadow(22.dp, RoundedCornerShape(5.dp)),
+                shape = RoundedCornerShape(5.dp),
                 color = Color(0xFFF4F7FA),
-                border = BorderStroke(1.5.dp, Color(0xFF20264F).copy(alpha = 0.9f))
+                border = BorderStroke(2.dp, Color(0xFF171A45).copy(alpha = 0.96f))
             ) {
                 LudoBoard(
                     state = state,
@@ -335,7 +336,7 @@ fun GameScreen(
                             }
                         }
                     },
-                    modifier = Modifier.padding(1.dp)
+                    modifier = Modifier.padding(0.5.dp)
                 )
             }
 
@@ -416,24 +417,33 @@ fun GameScreen(
 @Composable
 private fun GameRoomBackground() {
     Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                listOf(
+                    Color(0xFF44478F),
+                    Color(0xFF393D82),
+                    Color(0xFF2E326F)
+                )
+            )
+        )
         drawCircle(
             brush = Brush.radialGradient(
-                listOf(Color(0xFF7779D8).copy(alpha = 0.19f), Color.Transparent),
+                listOf(Color(0xFF8A8EE8).copy(alpha = 0.22f), Color.Transparent),
                 center = Offset(size.width * 0.52f, size.height * 0.42f),
-                radius = size.width * 0.72f
+                radius = size.width * 0.78f
             ),
-            radius = size.width * 0.72f,
+            radius = size.width * 0.78f,
             center = Offset(size.width * 0.52f, size.height * 0.42f)
         )
         drawCircle(
-            color = Color.White.copy(alpha = 0.025f),
-            radius = size.width * 0.42f,
-            center = Offset(size.width * 0.10f, size.height * 0.16f)
+            color = Color.White.copy(alpha = 0.028f),
+            radius = size.width * 0.34f,
+            center = Offset(size.width * 0.06f, size.height * 0.20f)
         )
         drawCircle(
-            color = Color(0xFF0E123B).copy(alpha = 0.18f),
-            radius = size.width * 0.55f,
-            center = Offset(size.width * 0.88f, size.height * 0.86f)
+            color = Color(0xFF11163F).copy(alpha = 0.20f),
+            radius = size.width * 0.62f,
+            center = Offset(size.width * 0.94f, size.height * 0.88f)
         )
     }
 }
@@ -455,17 +465,18 @@ private fun GameTopBar(
             RoundIconButton(symbol = "↻", enabled = enabled, onClick = onReset)
         }
         Surface(
-            color = Color(0xFF1D2258).copy(alpha = 0.78f),
-            shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+            color = Color(0xFF25295F).copy(alpha = 0.72f),
+            shape = RoundedCornerShape(17.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+            shadowElevation = 4.dp
         ) {
             Text(
-                text = if (mode == GameMode.ONE_V_ONE) "POWER • 1 VS 1" else "POWER • 2 VS 2",
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-                color = Color.White.copy(alpha = 0.90f),
+                text = if (mode == GameMode.ONE_V_ONE) "1 VS 1" else "2 VS 2",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                color = Color.White.copy(alpha = 0.92f),
                 fontWeight = FontWeight.Black,
-                fontSize = 10.sp,
-                letterSpacing = 0.7.sp
+                fontSize = 11.sp,
+                letterSpacing = 1.sp
             )
         }
         RoundIconButton(symbol = "☀", enabled = false, onClick = {})
@@ -506,28 +517,31 @@ private fun SideZone(
     autoPassPending: Boolean
 ) {
     val players = state.players.filter { it.side == side }
-    val active = state.activeSide == side && state.winner == null
+    val activeColor = state.activeColor.takeIf { state.activeSide == side && state.winner == null }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (players.size > 1) 124.dp else 112.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (players.size > 1) Arrangement.SpaceBetween else Arrangement.Center
-        ) {
-            players.forEach { player ->
-                PlayerSeat(
-                    player = player,
-                    side = side,
-                    powers = state.powers(player.color),
-                    active = active && state.activeColor == player.color
-                )
-            }
+        players.getOrNull(0)?.let { player ->
+            PlayerSeat(
+                player = player,
+                side = side,
+                powers = state.powers(player.color),
+                active = activeColor == player.color,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
         }
-
+        players.getOrNull(1)?.let { player ->
+            PlayerSeat(
+                player = player,
+                side = side,
+                powers = state.powers(player.color),
+                active = activeColor == player.color,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
+        }
         if (side == Side.COMPUTER) {
             DiceActionBubble(
                 state = state,
@@ -536,7 +550,10 @@ private fun SideZone(
                 rollingFace = rollingFace,
                 enabled = false,
                 autoPassPending = autoPassPending,
-                onRoll = {}
+                onRoll = {},
+                modifier = Modifier
+                    .align(if (players.size > 1 && activeColor == players.getOrNull(1)?.color) Alignment.BottomEnd else Alignment.BottomStart)
+                    .offset(x = if (players.size > 1 && activeColor == players.getOrNull(1)?.color) (-86).dp else 86.dp, y = 4.dp)
             )
         }
     }
@@ -558,30 +575,41 @@ private fun HumanZone(
     onUseExtraRoll: () -> Unit
 ) {
     val players = state.players.filter { it.side == Side.HUMAN }
+    val activeColor = state.activeColor.takeIf { state.activeSide == Side.HUMAN && state.winner == null }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (players.size > 1) Arrangement.SpaceBetween else Arrangement.Start
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (players.size > 1) 96.dp else 88.dp)
         ) {
-            players.forEach { player ->
+            players.getOrNull(0)?.let { player ->
                 PlayerSeat(
                     player = player,
                     side = Side.HUMAN,
                     powers = state.powers(player.color),
-                    active = state.activeSide == Side.HUMAN && state.activeColor == player.color
+                    active = activeColor == player.color,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+            }
+            players.getOrNull(1)?.let { player ->
+                PlayerSeat(
+                    player = player,
+                    side = Side.HUMAN,
+                    powers = state.powers(player.color),
+                    active = activeColor == player.color,
+                    modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             HumanPowerOrbs(
                 state = state,
@@ -615,21 +643,27 @@ private fun PlayerSeat(
     player: PlayerState,
     side: Side,
     powers: PowerInventory,
-    active: Boolean
+    active: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val accent = gameColor(player.color)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
         Box(contentAlignment = Alignment.BottomEnd) {
             PlayerAvatar(
                 side = side,
                 accent = accent,
                 active = active,
-                modifier = Modifier.size(60.dp)
+                modifier = Modifier.size(64.dp)
             )
             Surface(
                 color = accent,
                 shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.70f))
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.75f)),
+                shadowElevation = 3.dp
             ) {
                 Text(
                     text = player.color.name.take(1),
@@ -640,22 +674,25 @@ private fun PlayerSeat(
                 )
             }
         }
-        Spacer(Modifier.height(3.dp))
-        Surface(
-            color = Color(0xFF20255B).copy(alpha = 0.82f),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, if (active) accent else Color.White.copy(alpha = 0.08f))
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = if (side == Side.HUMAN) "YOU • ${player.color.name}" else "CPU • ${player.color.name}",
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                color = if (active) Color.White else Color.White.copy(alpha = 0.70f),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black
-            )
+            Surface(
+                color = Color(0xFF20255B).copy(alpha = 0.80f),
+                shape = RoundedCornerShape(11.dp),
+                border = BorderStroke(1.dp, if (active) accent else Color.White.copy(alpha = 0.08f))
+            ) {
+                Text(
+                    text = if (side == Side.HUMAN) "YOU" else "CPU",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                    color = if (active) Color.White else Color.White.copy(alpha = 0.68f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            PlayerPowerCounts(powers = powers, active = active)
         }
-        Spacer(Modifier.height(4.dp))
-        PlayerPowerCounts(powers = powers, active = active)
     }
 }
 
@@ -666,89 +703,96 @@ private fun PlayerAvatar(
     active: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val transition = rememberInfiniteTransition(label = "avatarGlow")
+    val glow by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(820), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "avatarGlowAlpha"
+    )
     Canvas(modifier = modifier) {
-        val radius = size.minDimension * 0.42f
+        val radius = size.minDimension * 0.40f
         val c = center
+        drawCircle(Color.Black.copy(alpha = 0.28f), radius * 1.18f, c + Offset(0f, radius * 0.09f))
         if (active) {
-            drawCircle(Color.White.copy(alpha = 0.20f), radius * 1.24f, c)
-            drawCircle(accent.copy(alpha = 0.36f), radius * 1.16f, c)
+            drawCircle(accent.copy(alpha = 0.28f * glow), radius * 1.30f, c)
+            drawCircle(Color.White.copy(alpha = 0.22f * glow), radius * 1.18f, c)
         }
-        drawCircle(Color(0xFF171B49), radius * 1.08f, c)
-        drawCircle(accent, radius, c)
-        drawCircle(Color.White.copy(alpha = 0.94f), radius * 0.78f, c)
-        drawCircle(accent.copy(alpha = 0.16f), radius * 0.70f, c)
+        drawCircle(Color(0xFF171B49), radius * 1.11f, c)
+        drawCircle(accent, radius * 1.02f, c)
+        drawCircle(Color.White, radius * 0.82f, c)
+        drawCircle(Color(0xFFF3F5FF), radius * 0.72f, c)
 
         if (side == Side.HUMAN) {
-            drawCircle(accent, radius * 0.23f, Offset(c.x, c.y - radius * 0.20f))
+            drawCircle(accent.copy(alpha = 0.95f), radius * 0.24f, Offset(c.x, c.y - radius * 0.20f))
             drawRoundRect(
-                color = accent,
+                color = accent.copy(alpha = 0.95f),
                 topLeft = Offset(c.x - radius * 0.42f, c.y + radius * 0.10f),
-                size = Size(radius * 0.84f, radius * 0.44f),
-                cornerRadius = CornerRadius(radius * 0.22f)
+                size = Size(radius * 0.84f, radius * 0.46f),
+                cornerRadius = CornerRadius(radius * 0.23f)
             )
         } else {
             drawRoundRect(
                 color = accent,
-                topLeft = Offset(c.x - radius * 0.40f, c.y - radius * 0.28f),
-                size = Size(radius * 0.80f, radius * 0.58f),
-                cornerRadius = CornerRadius(radius * 0.15f)
+                topLeft = Offset(c.x - radius * 0.42f, c.y - radius * 0.30f),
+                size = Size(radius * 0.84f, radius * 0.62f),
+                cornerRadius = CornerRadius(radius * 0.17f)
             )
-            drawCircle(Color.White, radius * 0.07f, Offset(c.x - radius * 0.16f, c.y - radius * 0.02f))
-            drawCircle(Color.White, radius * 0.07f, Offset(c.x + radius * 0.16f, c.y - radius * 0.02f))
+            drawCircle(Color.White, radius * 0.08f, Offset(c.x - radius * 0.17f, c.y - radius * 0.04f))
+            drawCircle(Color.White, radius * 0.08f, Offset(c.x + radius * 0.17f, c.y - radius * 0.04f))
             drawLine(
                 color = accent,
-                start = Offset(c.x, c.y - radius * 0.46f),
-                end = Offset(c.x, c.y - radius * 0.28f),
+                start = Offset(c.x, c.y - radius * 0.50f),
+                end = Offset(c.x, c.y - radius * 0.30f),
                 strokeWidth = radius * 0.08f
             )
-            drawCircle(accent, radius * 0.08f, Offset(c.x, c.y - radius * 0.50f))
+            drawCircle(accent, radius * 0.09f, Offset(c.x, c.y - radius * 0.54f))
         }
     }
 }
 
 @Composable
 private fun PlayerPowerCounts(powers: PowerInventory, active: Boolean) {
-    Surface(
-        color = Color(0xFF171B49).copy(alpha = 0.82f),
-        shape = RoundedCornerShape(13.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (active) 0.18f else 0.07f))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PlayerPowerCount(PowerType.PROTECT, powers.protect)
-            PlayerPowerCount(PowerType.CHOOSE_ROLL, powers.chooseRoll)
-            PlayerPowerCount(PowerType.DOUBLE, powers.double)
-            PlayerPowerCount(PowerType.EXTRA_ROLL, powers.extraRoll)
-        }
+        PlayerPowerCount(PowerType.PROTECT, powers.protect, active)
+        PlayerPowerCount(PowerType.CHOOSE_ROLL, powers.chooseRoll, active)
+        PlayerPowerCount(PowerType.DOUBLE, powers.double, active)
+        PlayerPowerCount(PowerType.EXTRA_ROLL, powers.extraRoll, active)
     }
 }
 
 @Composable
-private fun PlayerPowerCount(type: PowerType, count: Int) {
+private fun PlayerPowerCount(type: PowerType, count: Int, active: Boolean) {
     Box(
         modifier = Modifier
-            .size(26.dp)
+            .size(25.dp)
+            .shadow(if (active && count > 0) 4.dp else 1.dp, CircleShape)
             .clip(CircleShape)
             .background(
                 Brush.radialGradient(
-                    listOf(Color(0xFFB9E2FF), Color(0xFF407BC6), Color(0xFF16234E))
+                    if (count > 0) {
+                        listOf(Color.White, Color(0xFF82C7FF), Color(0xFF315DA6), Color(0xFF17244F))
+                    } else {
+                        listOf(Color(0xFF69729A), Color(0xFF30385F), Color(0xFF1A2047))
+                    }
                 )
             )
-            .border(1.dp, Color.White.copy(alpha = 0.34f), CircleShape),
+            .border(1.dp, Color.White.copy(alpha = if (count > 0) 0.52f else 0.16f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         PowerIcon(
             type = type,
-            size = 16.dp,
-            tint = if (count > 0) Color.White else Color.White.copy(alpha = 0.30f)
+            size = 14.dp,
+            tint = if (count > 0) Color.White else Color.White.copy(alpha = 0.28f)
         )
         Surface(
-            modifier = Modifier.align(Alignment.TopEnd).size(11.dp),
+            modifier = Modifier.align(Alignment.TopEnd).size(10.dp),
             shape = CircleShape,
-            color = if (count > 0) Color(0xFFF04755) else Color(0xFF4A5275)
+            color = if (count > 0) Color(0xFFF04959) else Color(0xFF4B5272),
+            border = BorderStroke(0.7.dp, Color.White.copy(alpha = 0.55f))
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
@@ -866,7 +910,7 @@ private fun PowerOrb(
     }
     Box(
         modifier = Modifier
-            .size(47.dp)
+            .size(45.dp)
             .shadow(if (active || enabled) 7.dp else 2.dp, CircleShape)
             .clip(CircleShape)
             .background(
@@ -874,7 +918,7 @@ private fun PowerOrb(
                     if (active) {
                         listOf(Color(0xFFFFE787), Color(0xFFC58B16), Color(0xFF5A3A09))
                     } else {
-                        listOf(Color(0xFF9FD4FF), Color(0xFF3B70B7), Color(0xFF17234F))
+                        listOf(Color.White, Color(0xFF9DD9FF), Color(0xFF4175BF), Color(0xFF18234D))
                     }
                 )
             )
@@ -908,7 +952,8 @@ private fun DiceActionBubble(
     rollingFace: Int,
     enabled: Boolean,
     autoPassPending: Boolean,
-    onRoll: () -> Unit
+    onRoll: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val active = state.activeSide == side && state.winner == null
     val infiniteTransition = rememberInfiniteTransition(label = "dice")
@@ -920,20 +965,20 @@ private fun DiceActionBubble(
     )
 
     Box(
-        modifier = Modifier
-            .size(68.dp)
-            .shadow(if (active) 10.dp else 4.dp, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
+        modifier = modifier
+            .size(70.dp)
+            .shadow(if (active) 10.dp else 4.dp, RoundedCornerShape(17.dp))
+            .clip(RoundedCornerShape(17.dp))
             .background(
                 Brush.verticalGradient(
-                    if (active) listOf(Color(0xFF353B79), Color(0xFF171B49))
-                    else listOf(Color(0xFF2A2E63), Color(0xFF171A42))
+                    if (active) listOf(Color(0xFF474D93), Color(0xFF20265F), Color(0xFF14183E))
+                    else listOf(Color(0xFF34396F), Color(0xFF171A42))
                 )
             )
             .border(
                 width = if (active) 2.dp else 1.dp,
                 color = if (active) Color.White.copy(alpha = 0.48f) else Color.White.copy(alpha = 0.10f),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(17.dp)
             )
             .clickable(enabled = enabled, onClick = onRoll),
         contentAlignment = Alignment.Center
@@ -948,7 +993,7 @@ private fun DiceActionBubble(
             rolling && active -> DiceFace(
                 value = rollingFace.coerceIn(1, 6),
                 modifier = Modifier.graphicsLayer { rotationZ = rotation },
-                size = 49.dp
+                size = 51.dp
             )
             active && state.dice == null && side == Side.HUMAN -> Surface(
                 color = Color.White,
@@ -971,7 +1016,7 @@ private fun DiceActionBubble(
             )
             else -> DiceFace(
                 value = if (active) state.dice ?: state.lastRoll else state.lastRoll,
-                size = 49.dp
+                size = 51.dp
             )
         }
 
@@ -1035,8 +1080,8 @@ private fun StatusPill(
         animationLock && state.activeSide == Side.COMPUTER -> "Computer is moving…"
         animationLock -> "Moving guti…"
         protectMode -> "Tap a guti to protect it"
-        state.activeSide == Side.COMPUTER -> "Computer is choosing the best move…"
-        state.dice == null -> "Your turn • tap GO or use a power"
+        state.activeSide == Side.COMPUTER -> "Computer thinking…"
+        state.dice == null -> "Your turn"
         legalMoves.isNotEmpty() -> "Tap a glowing guti"
         GameEngine.doubleWouldEnableMove(state) -> "No normal move • ×2 can unlock a move"
         else -> state.message
@@ -1044,7 +1089,7 @@ private fun StatusPill(
 
     Surface(
         color = Color(0xFF20255B).copy(alpha = 0.80f),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(17.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
         Text(

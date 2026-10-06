@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -79,9 +80,9 @@ private val baseSpots = mapOf(
     PlayerColor.BLUE to listOf(Point(2f, 11f), Point(4f, 11f), Point(2f, 13f), Point(4f, 13f))
 )
 
-private val boardInk = Color(0xFF748293)
-private val boardPaper = Color(0xFFF7FAFD)
-private val powerGold = Color(0xFF3B78C7)
+private val boardInk = Color(0xFF6C798C)
+private val boardPaper = Color(0xFFF8FBFF)
+private val powerGold = Color(0xFF446FC2)
 private val powerGoldSoft = Color(0xFFF7FAFD)
 private val shieldGold = Color(0xFFFFC83D)
 
@@ -171,33 +172,33 @@ private fun AnimatedPowerPickup(
     unit: Dp,
     cell: Cell
 ) {
-    val appear = remember(cell.row, cell.col, type) { Animatable(0.25f) }
+    val appear = remember(cell.row, cell.col, type) { Animatable(0.18f) }
     val pulseTransition = rememberInfiniteTransition(label = "powerPulse")
     val pulse by pulseTransition.animateFloat(
         initialValue = 0.94f,
         targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
-            animation = tween(760),
+            animation = tween(720),
             repeatMode = RepeatMode.Reverse
         ),
         label = "powerScale"
     )
     val spin by pulseTransition.animateFloat(
-        initialValue = -4f,
-        targetValue = 4f,
+        initialValue = -3f,
+        targetValue = 3f,
         animationSpec = infiniteRepeatable(
-            animation = tween(980),
+            animation = tween(930),
             repeatMode = RepeatMode.Reverse
         ),
         label = "powerTilt"
     )
 
     LaunchedEffect(cell.row, cell.col, type) {
-        appear.snapTo(0.25f)
-        appear.animateTo(1f, spring(dampingRatio = 0.58f, stiffness = 430f))
+        appear.snapTo(0.18f)
+        appear.animateTo(1f, spring(dampingRatio = 0.56f, stiffness = 470f))
     }
 
-    val pickupSize = unit * 0.84f
+    val pickupSize = unit * 0.88f
     Canvas(
         modifier = Modifier
             .offset(
@@ -208,38 +209,56 @@ private fun AnimatedPowerPickup(
             .graphicsLayer {
                 scaleX = appear.value * pulse
                 scaleY = appear.value * pulse
-                rotationZ = spin
+                rotationZ = if (type == PowerType.EXTRA_ROLL) 0f else spin
             }
     ) {
         val c = center
-        val r = size.minDimension * 0.46f
-        drawCircle(Color.Black.copy(alpha = 0.22f), r, c + Offset(size.width * 0.035f, size.height * 0.055f))
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White, Color(0xFF9ED8FF), Color(0xFF4B83D0), Color(0xFF213C82)),
-                center = Offset(c.x * 0.78f, c.y * 0.72f),
-                radius = r * 1.35f
-            ),
-            radius = r,
-            center = c
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.93f),
-            radius = r,
-            center = c,
-            style = Stroke(width = size.minDimension * 0.055f)
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.38f),
-            radius = r * 0.66f,
-            center = Offset(c.x - r * 0.16f, c.y - r * 0.18f),
-            style = Stroke(width = size.minDimension * 0.045f)
-        )
+        val r = size.minDimension * 0.45f
+        val rim = when (type) {
+            PowerType.EXTRA_ROLL -> Color(0xFFFFC634)
+            PowerType.PROTECT -> Color(0xFF55A8FF)
+            PowerType.CHOOSE_ROLL -> Color(0xFF6E9BFF)
+            PowerType.DOUBLE -> Color(0xFF8F79FF)
+        }
+        val middle = when (type) {
+            PowerType.EXTRA_ROLL -> Color(0xFFFFE789)
+            PowerType.PROTECT -> Color(0xFFB8E3FF)
+            PowerType.CHOOSE_ROLL -> Color(0xFFD8E7FF)
+            PowerType.DOUBLE -> Color(0xFFE1DAFF)
+        }
+
+        drawCircle(Color.Black.copy(alpha = 0.26f), r, c + Offset(size.width * 0.04f, size.height * 0.07f))
+        if (type == PowerType.EXTRA_ROLL) {
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(Color(0xFFFFF3A9), rim, Color(0xFFD9870B))),
+                topLeft = Offset(c.x - r, c.y - r * 0.84f),
+                size = Size(r * 2f, r * 1.68f),
+                cornerRadius = CornerRadius(r * 0.28f)
+            )
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.76f),
+                topLeft = Offset(c.x - r, c.y - r * 0.84f),
+                size = Size(r * 2f, r * 1.68f),
+                cornerRadius = CornerRadius(r * 0.28f),
+                style = Stroke(width = size.minDimension * 0.055f)
+            )
+        } else {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White, middle, rim, Color(0xFF26386F)),
+                    center = Offset(c.x * 0.80f, c.y * 0.72f),
+                    radius = r * 1.36f
+                ),
+                radius = r,
+                center = c
+            )
+            drawCircle(Color.White.copy(alpha = 0.92f), r, c, style = Stroke(width = size.minDimension * 0.05f))
+        }
         drawPowerIcon(
             type = type,
             center = c,
-            iconSize = size.minDimension * 0.56f,
-            tint = Color(0xFF17376F)
+            iconSize = size.minDimension * if (type == PowerType.EXTRA_ROLL) 0.52f else 0.56f,
+            tint = if (type == PowerType.EXTRA_ROLL) Color(0xFF7A4B00) else Color(0xFF17376F)
         )
     }
 }
@@ -334,14 +353,14 @@ private fun DrawScope.drawBase(
     val baseSize = Size(6f * unit, 6f * unit)
 
     drawRect(
-        color = baseColor.copy(alpha = 0.45f),
+        color = baseColor.copy(alpha = 0.50f),
         topLeft = topLeft + Offset(unit * 0.06f, unit * 0.08f),
         size = baseSize
     )
     drawRect(color = baseColor, topLeft = topLeft, size = baseSize)
 
     drawRoundRect(
-        color = Color.Black.copy(alpha = 0.12f),
+        color = Color.Black.copy(alpha = 0.18f),
         topLeft = Offset((col + 0.82f) * unit, (row + 0.86f) * unit),
         size = Size(4.42f * unit, 4.42f * unit),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(unit * 0.42f)
@@ -533,12 +552,12 @@ private fun DrawScope.drawTokenPiece(
         size = Size(side * 0.70f, side * 0.24f)
     )
     drawOval(
-        color = tokenColor.copy(alpha = 0.80f),
+        brush = Brush.verticalGradient(listOf(tokenColor.copy(alpha = 0.98f), tokenColor.copy(alpha = 0.72f))),
         topLeft = Offset(side * 0.20f, side * 0.56f),
         size = Size(side * 0.60f, side * 0.25f)
     )
     drawCircle(Color.Black.copy(alpha = 0.16f), side * 0.27f, head + Offset(side * 0.025f, side * 0.04f))
-    drawCircle(tokenColor, side * 0.27f, head)
+    drawCircle(brush = Brush.radialGradient(listOf(Color.White.copy(alpha = 0.78f), tokenColor, tokenColor.copy(alpha = 0.82f)), center = head + Offset(-side * 0.08f, -side * 0.09f), radius = side * 0.42f), radius = side * 0.27f, center = head)
     drawCircle(Color.White.copy(alpha = 0.90f), side * 0.27f, head, style = Stroke(width = side * 0.045f))
     drawCircle(
         Color.White.copy(alpha = 0.36f),
