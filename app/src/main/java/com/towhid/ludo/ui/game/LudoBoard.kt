@@ -14,12 +14,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.towhid.ludo.game.engine.GameEngine
 import com.towhid.ludo.game.model.GameState
 import com.towhid.ludo.game.model.PlayerColor
-import com.towhid.ludo.game.model.Token
 import kotlin.math.hypot
 
 private data class Cell(val row: Int, val col: Int)
 private data class Point(val x: Float, val y: Float)
-private data class DrawToken(val color: PlayerColor, val tokenId: Int, val point: Point)
+private data class DrawToken(
+    val color: PlayerColor,
+    val tokenId: Int,
+    val point: Point,
+    val protected: Boolean
+)
 
 private val ringCells = listOf(
     Cell(6, 1), Cell(6, 2), Cell(6, 3), Cell(6, 4), Cell(6, 5),
@@ -89,12 +93,33 @@ fun LudoBoard(
 
         ringCells.forEachIndexed { index, cell ->
             val startColor = PlayerColor.entries.firstOrNull { it.startIndex == index }
-            drawCell(cell, unit, startColor?.let { colorOf(it).copy(alpha = 0.42f) } ?: Color.White)
+            val power = GameEngine.powerCells[index]
+            val fill = when {
+                startColor != null -> colorOf(startColor).copy(alpha = 0.42f)
+                power != null -> Color(0xFFFFF3C4)
+                else -> Color.White
+            }
+            drawCell(cell, unit, fill)
+
             if (index in GameEngine.safeRingIndexes) {
                 drawCircle(
                     color = Color(0xFF5D5D5D),
                     radius = unit * 0.09f,
                     center = Offset((cell.col + 0.5f) * unit, (cell.row + 0.5f) * unit)
+                )
+            }
+            if (power != null) {
+                val center = Offset((cell.col + 0.5f) * unit, (cell.row + 0.5f) * unit)
+                drawCircle(
+                    color = Color(0xFFFFC107),
+                    radius = unit * 0.29f,
+                    center = center
+                )
+                drawPowerIcon(
+                    type = power,
+                    center = center,
+                    iconSize = unit * 0.58f,
+                    tint = Color(0xFF202020)
                 )
             }
         }
@@ -121,9 +146,17 @@ fun LudoBoard(
             if (token.color == state.activeColor && token.tokenId in selectableTokenIds) {
                 drawCircle(
                     color = Color(0xFF212121),
-                    radius = unit * 0.38f,
+                    radius = unit * 0.40f,
                     center = center,
-                    style = Stroke(width = unit * 0.09f)
+                    style = Stroke(width = unit * 0.08f)
+                )
+            }
+            if (token.protected) {
+                drawCircle(
+                    color = Color(0xFFFFB300),
+                    radius = unit * 0.37f,
+                    center = center,
+                    style = Stroke(width = unit * 0.10f)
                 )
             }
             drawCircle(color = color, radius = unit * 0.30f, center = center)
@@ -190,7 +223,7 @@ private fun renderedTokens(state: GameState): List<DrawToken> {
                         Point(cell.col + 0.5f, cell.row + 0.5f)
                     }
                 }
-                add(DrawToken(player.color, token.id, point))
+                add(DrawToken(player.color, token.id, point, token.protected))
             }
         }
     }
