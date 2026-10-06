@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.towhid.ludo.BuildConfig
 import com.towhid.ludo.game.model.GameMode
 import com.towhid.ludo.ui.game.GameScreen
 import com.towhid.ludo.ui.theme.TowhidLudoTheme
@@ -93,5 +96,11 @@ private fun HomeScreen(
         ) {
             Text("2 vs 2")
         }
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "v${BuildConfig.VERSION_NAME} • Offline",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
